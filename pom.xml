@@ -9,6 +9,7 @@
         <module>fastjson_v1247</module>
         <module>fastjson_v1248to67</module>
         <module>fastjson_v1268</module>
+        <module>fastjson_v1280</module>
     </modules>
     <parent>
         <groupId>org.springframework.boot</groupId>
